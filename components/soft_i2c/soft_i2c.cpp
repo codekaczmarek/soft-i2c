@@ -274,9 +274,11 @@ void SoftI2CBus::log_scan_results_() {
 i2c::ErrorCode SoftI2CBus::fail_(i2c::ErrorCode err, uint8_t address) {
   this->error_count_++;
   // Rate limited: a dead sensor polled every 5 s should not turn the log into a firehose, but a
-  // one-second window keeps the failure visible right when it starts happening.
+  // one-second window keeps the failure visible right when it starts happening. The first failure
+  // is never dropped - last_error_log_ms_ starts at 0, so a boot-time error inside the first
+  // second would otherwise be swallowed, and a boot-time error is exactly the one people debug.
   const uint32_t now = millis();
-  if (now - this->last_error_log_ms_ >= 1000) {
+  if (this->error_count_ == 1 || now - this->last_error_log_ms_ >= 1000) {
     this->last_error_log_ms_ = now;
     ESP_LOGW(TAG, "I2C transaction failed: error=%d addr=0x%02X sda=%d scl=%d (total failures: %u)", (int) err,
              address, this->sda_->digital_read(), this->scl_->digital_read(), (unsigned) this->error_count_);
@@ -300,6 +302,24 @@ void SoftI2CBus::setup() {
   this->release_scl_();
   delayMicroseconds(10);
   this->initialized_ = true;
+
+  // One-shot line probe, logged unconditionally because it is the only evidence that separates
+  // "no slave answered" from "the pad never reaches the line". Released lines reading high prove
+  // the pull-up and the input path; driving a line low and reading it back proves the output path.
+  // A line that stays high while driven is a pad that is not usable as GPIO (its mux is still
+  // owned by another function), not a missing sensor.
+  const bool sda_idle = this->read_sda_();
+  const bool scl_idle = this->read_scl_();
+  this->drive_scl_low_();
+  this->delay_();
+  const bool scl_driven_low = !this->read_scl_();
+  this->release_scl_();
+  this->drive_sda_low_();
+  this->delay_();
+  const bool sda_driven_low = !this->read_sda_();
+  this->release_sda_();
+  ESP_LOGI(TAG, "Line probe: idle SDA=%d SCL=%d, driven-low SDA=%d SCL=%d, scan %s", (int) sda_idle,
+           (int) scl_idle, (int) sda_driven_low, (int) scl_driven_low, this->scan_ ? "enabled" : "disabled");
 
   if (!this->recover_()) {
     ESP_LOGE(TAG, "Bus is not usable: SDA/SCL will not both go high. Check pull-ups "

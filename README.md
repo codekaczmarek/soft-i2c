@@ -52,11 +52,11 @@ i2c: []
 
 soft_i2c:
   - id: bus_sht
+    sda: TX1
+    scl: RX1
     frequency: 100kHz
-    sda_pin: TX1
-    scl_pin: RX1
-    sda_input_mode: ANALOG
-    scl_input_mode: ANALOG
+    scan: true
+    internal_pullup: true
 
 sensor:
   - platform: sht3xd
@@ -68,13 +68,59 @@ sensor:
       name: Wilgotnosc
 ```
 
-W ESPHome 2026.9+ sterowniki SHT/DHT wystawiaja dwa narzedzia, wiec nazwy ida do
-zagniezdzonych blokow `temperature:` / `humidity:` - plytki klucz `name:` zostal
-odrzucony przez walidator.
+Klucze to `sda:` i `scl:` (nie `sda_pin:`). Opcja `internal_pullup: true` jest domyslne, ale
+warto ja wpisac jawnie. Nie ma opcji `sda_input_mode:` / `scl_input_mode:` - ich obecnosc w YAMLu
+konczy sie bled walidacji, a ich brak nie szkodzi.
 
-W ESPHome nowszym niz 2026.9 klucz `i2c_id:` bywa zastapiony przez `bus_id:`.
+W ESPHome 2026.9+ sterowniki SHT/DHT wystawiaja**Dlaczego kod przelacza tryby zamiast pisac wartosci.** `pinMode(pin, OUTPUT)` to tu
+`gpio_config(id, GMODE_OUTPUT)`, a `GMODE_OUTPUT` zapisuje w rejestrze pinu wartosc `0x00`:
+kierunek „wyjscie" z wyzerowanym bitem stanu (`GCFG_OUTPUT_POS 1`). Samo przełączenie w OUTPUT
+startuje wiec od **stanu niskiego**. Open-drain emulujemy kierunkiem, nie wartoscia:
+`drive_sda_low_()` = latch w 0 i `pin_mode(FLAG_OUTPUT)`, `release_sda_()` = `pin_mode(FLAG_INPUT |
+FLAG_PULLUP)`. Sciezki „wyjscie i wysoki stan" nie ma - „OUTPUT i zapisz 1" na magistrali z
+pull-upem to zwarcie do VCC w dziewiatym takcie.
 
-**`sda_input_mode: ANALOG` i `scl_input_mode: ANALOG` to nie dekoracja.** Na BK72xx
+Druga pulapka tego samego typu: `digitalWrite()` na pinie, ktory aktualnie **nie** jest wyjsciem,
+nie zapisuje latcha, tylko przelacza tryb (`pinSetOutputPull` w `wiring_private.h`:
+`pinMode(pinNumber, INPUT_PULLDOWN ^ !!status); return;`). Stad kolejnosc w `drive_sda_low_()`:
+`digital_write(false)` przenosi pad w INPUT_PULLDOWN (0x2C), a `pin_mode(FLAG_OUTPUT)` domyka go w
+OUTPUT(0x00) - bez przejazdu przez stan wysoki.
+
+Filtr JTAG (`gpio_ops_filter`) ignoruje odczyty i zapisy tylko dla GPIO20..23, a LibreTiny i tak
+wywoluje `gpio_ops_disable_filter()` przy starcie (`cores/beken-72xx/base/fixups/sys_ctrl.c`), wiec
+nawet one dzialaja - ale to piny JTAG, na magistrale wez inne. SDK nie podaje rezystancji
+wewnetrzego pull-upu (jest sam bit zalaczania), wiec przy 100 kHz i dluzszych przewodach daj
+zewneczne 4.7k-10k do VCC.
+
+## Diagnostyka
+
+`setup()` nadaje jedna linie, ktora rozstrzyga, czy winny jest pad, czy urzadzenie:
+
+```
+[I][soft_i2c:3xx]: Line probe: idle SDA=1 SCL=1, driven-low SDA=1 SCL=1, scan enabled
+```
+
+| Widok | Interpretacja |
+|---|---|
+| `idle SDA=1 SCL=1` | pad reaguje, pull-up dziala, linie nie sa zwarte do masy |
+| `idle SDA=0` albo `SCL=0` | linia trzymana w dol: zwarcie, brak pull-upu albo zly pin |
+| `driven-low SDA=0 SCL=0` | wychodzace stejrunki dociagaja w dol - pad jest uzyteczny |
+| `driven-low SDA=1` (albo SCL=1) | pad nie dociaga w dol, mimo prosby o low - wyjscie jest zajete przez inna funkcje albo pin nie jest GPIO |
+| `scan disabled` | w tym buildzie nie ma `scan: true`, wiec log nie pokazze adresu urzadzenia, nawet gdy odpowiada |
+
+Potem, przy pierwszym bledzie transakcji (pierwszy logowany jest zawsze, nastepne nie czesciej niz
+raz na sekunde):
+
+```
+[W][soft_i2c:3xx]: I2C transaction failed: error=2 addr=0x44 sda=1 scl=1 (total failures: 1)
+```
+
+Kody z `i2c::ErrorCode`: `2` brak ACK (urzadzenie nie odpowiada - adres, zasilanie, inny uklad),
+`3` timeout (SCL nie wchodzi w gore - stretching albo brak pull-upu), `4` magistrala nie
+zainicjalizowana, `7` CRC. Poziomy `sda`/`scl` w tej samej linii mowia, czy w momencie bledu linia
+byla fizycznie gorna.
+
+l_input_mode: ANALOG` to nie dekoracja.** Na BK72xx
 ustawienie pinu jako `INPUT` z wlaczonym pull-upem (`gpio_dma_pe(0)`) powoduje dryf
 stanu wejscia i gubione zbocza. Sciezka domyslna (`PULLUP`) jest poprawna sprzetowo,
 ale na tej platformie zawodna - stad w przykladach ANALOG plus rezystory 4.7 kOhm do VCC.
