@@ -1,0 +1,56 @@
+# Konfiguracja testowa odpalana przez GitHub Actions (joby `validate` i `compile`).
+# Zawiera WYLACZNIE wartosci fikcyjne - nigdy prawdziwych kredensali.
+#
+#   esphome config   test/ci-config.yaml
+#   esphome compile  test/ci-config.yaml
+substitutions:
+  devicename: ci-test
+
+esphome:
+  name: ${devicename}
+
+# Modul CBU to BK7231N, platforma LibreTiny.
+bk72xx:
+  board: cbu
+
+# Testujemy kod z biezacego commita, nie z opublikowanego tagu.
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+logger:
+
+# Warstwa natywna jest niezbedna - soft_i2c rejestruje sie jako magistrala i2c.
+i2c: []
+
+soft_i2c:
+  - id: i2c_soft
+    sda: TX1
+    scl: RX1
+    frequency: 100kHz
+    scan: true
+    timeout: 10ms
+    bus_recovery: false
+
+# Od ESPHome 2026.9 encje sht3xd ida zagniezdzone (temperature:/humidity:),
+# nie jako plytkie pola name:/id: na poziomie platformy.
+sensor:
+  - platform: sht3xd
+    i2c_id: i2c_soft
+    update_interval: 60s
+    temperature:
+      id: temperature
+      name: Temperatura
+      filters:
+        - median:
+            window_size: 3
+            send_every: 1
+    humidity:
+      id: humidity
+      name: Wilgotnosc
+      accuracy_decimals: 1
+      filters:
+        - median:
+            window_size: 3
+            send_every: 1

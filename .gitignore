@@ -3,3 +3,4 @@
 *.pidll
 secrets.yaml
 .esphome/
+build/

@@ -1,3 +1,5 @@
+# Sekrety w secrets.yaml (obok tego pliku): wifi_ssid, wifi_password,
+# wifi_fallback_password, ota_password, api_key (base64, 32 B).
 # Test project for the soft_i2c external component (BK7231 / CBU + SHT3xD)
 substitutions:
   devicename: th-cbu-01            # nazwa urzadzenia w sieci / mDNS
@@ -13,8 +15,8 @@ bk72xx:
 external_components:
   - source:
       type: git
-      url: https://github.com/TWOJ_LOGIN/soft-i2c
-      ref: main
+      url: https://github.com/codekaczmarek/soft-i2c.git
+      ref: v1.0.0
 
 preferences:
   flash_write_interval: 1min
@@ -23,7 +25,7 @@ logger:
 
 api:
   encryption:
-    key: "${api_key}"
+    key: !secret api_key
 
 ota:
   - platform: esphome
@@ -46,7 +48,7 @@ web_server:
 i2c: []
 
 # Your module has the sensor on TX1/RX1 (P11/P10) = UART1. Bit-bang does not care about the
-# alternate functions, so these pins work here — with one caveat: UART1 is also the flashing
+# alternate functions, so these pins work here - with one caveat: UART1 is also the flashing
 # port. Log output stays on the default UART2 (P0/P1), so nothing else conflicts; just do the
 # first flash over UART1 with the bus attached (idle-high is fine for both) or use OTA later.
 soft_i2c:

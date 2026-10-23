@@ -1,0 +1,38 @@
+# Automatyczne aktualizacje zpinowanych zaleznosci CI.
+# Cooldown: nowe wersje trafia do PR dopiero po 7 dniach (major: po 14), wiec
+# swiezy, potencjalnie zly lub zlokowany release nie wejdzie w workflow
+# pierwszego dnia. Security updates nie sa opozniane przez cooldown.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Warsaw
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Warsaw
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: build
+    allow:
+      - dependency-name: esphome
+      - dependency-name: zizmor

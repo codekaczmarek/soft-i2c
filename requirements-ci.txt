@@ -1,0 +1,4 @@
+# Zaleznosci odpalane w GitHub Actions (pip install -r requirements-ci.txt).
+# Versiony trzymane w jednym miejscu, zeby cache pip mial stabilny klucz.
+esphome==2026.9.1
+zizmor==1.31.1
