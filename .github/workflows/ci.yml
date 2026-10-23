@@ -179,7 +179,7 @@ jobs:
           # '=', wiec sprawdzenie typu 'grep -c "[A-Za-z0-9+/]\{44\}"' nie pasaje
           # do zadnego poprawnego klucza i falszywie wywala build.
           grep -qxF "api_key: ${API_KEY}" secrets.yaml || { echo "::error::secrets.yaml nie zawiera wygenerowanego klucza"; exit 1; }
-          # Bez PyYAML: w tym kroku nie mozemy zakladac, ze zaleznosci sa już zainstalowane.
+          # Bez PyYAML: w tym kroku nie mozemy zakladac, ze zaleznosci sa juz zainstalowane.
           python - <<'PYCHK'
           import base64, sys
           linia = next(l for l in open("secrets.yaml", encoding="utf-8") if l.startswith("api_key:"))
@@ -281,10 +281,15 @@ jobs:
           Assistantem, klucz API musi byc Twoj - zbuduj firmware wlasna
           konfiguracja przez ESPHome Device Builder (README, sekcja 'Device
           Builder'). Binarki stad sluza do sprawdzenia, ze komponent sie kompiluje."
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" --clobber \
+          # 'gh' rozwiazuje repo przez 'git' - bez kroku checkout nie ma .git i kazdy
+          # krok gh pada z 'fatal: not a git repository'. Jawne --repo usuwa to zalozenie,
+          # nie dorzucajac zbednego checkoutu (release potrzebuje tylko artefaktow).
+          REPO_FLAG=(--repo "$GITHUB_REPOSITORY")
+          if gh release view "$TAG" "${REPO_FLAG[@]}" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${REPO_FLAG[@]}" --clobber \
               dist/soft-i2c-firmware.bin dist/soft-i2c-firmware.ota.rbl dist/SHA256SUMS.txt
           else
-            gh release create "$TAG" --title "soft_i2c $TAG" --notes "$notes" --latest \
+            gh release create "$TAG" "${REPO_FLAG[@]}" --title "soft_i2c $TAG" --notes "$notes" --latest \
               dist/soft-i2c-firmware.bin dist/soft-i2c-firmware.ota.rbl dist/SHA256SUMS.txt
           fi
+          gh release view "$TAG" "${REPO_FLAG[@]}"
