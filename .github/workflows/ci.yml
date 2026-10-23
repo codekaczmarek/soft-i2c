@@ -229,9 +229,13 @@ jobs:
           # o uklad. -print -quit zamiast '| head -n 1': przy 'set -o pipefail' glowa
           # zamyka pipe i find konczy sie SIGPIPE (rc=141), co walilo caly krok.
           firm="$(find . -type f -name firmware.bin -path '*/.pioenvs/*' -print -quit)"
-          test -n "$firm" || { echo "::error::brak firmware.bin pod .pioenvs - build nie dal binarki?"; find . -maxdepth 6 -type f -name '*.bin' | head -20; exit 1; }
+          # sed -n '1,20p' zamiast 'head -20': sed konsumuje calle wyjscie, wiec find nie
+          # dostaje SIGPIPE (rc=141) przy 'set -o pipefail' i komunikat bledu nie znika.
+          test -n "$firm" || { echo "::error::brak firmware.bin pod .pioenvs - build nie dal binarki?"; find . -maxdepth 6 -type f -name '*.bin' | sed -n '1,20p'; exit 1; }
           bin="$(dirname "$firm")"
-          test -f "$bin/image_bk7231n_app.ota.rbl" || { echo "::error::brak $bin/image_bk7231n_app.ota.rbl"; ls -l "$bin" | head -20; exit 1; }
+          # find zamiast 'ls | head': actionlint odpala shellcheck (SC2012) i info-level
+          # uwaga wywala krok; '| head' to dodatkowo SIGPIPE przy 'set -o pipefail'.
+          test -f "$bin/image_bk7231n_app.ota.rbl" || { echo "::error::brak $bin/image_bk7231n_app.ota.rbl"; find "$bin" -maxdepth 1 -type f -printf '%s  %p\n'; exit 1; }
           cp "$firm" dist/soft-i2c-firmware.bin
           cp "$bin/image_bk7231n_app.ota.rbl" dist/soft-i2c-firmware.ota.rbl
           (cd dist && sha256sum soft-i2c-firmware.bin soft-i2c-firmware.ota.rbl > SHA256SUMS.txt)
