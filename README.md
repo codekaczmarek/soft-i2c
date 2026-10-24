@@ -97,7 +97,8 @@ zewneczne 4.7k-10k do VCC.
 `setup()` nadaje jedna linie, ktora rozstrzyga, czy winny jest pad, czy urzadzenie:
 
 ```
-[I][soft_i2c:3xx]: Line probe: idle SDA=1 SCL=1, driven-low SDA=1 SCL=1, scan enabled
+[I][soft_i2c:294]: soft_i2c v1.2.1
+[I][soft_i2c:322]: Line probe: idle SDA=1 SCL=1, driven-low SDA=1 SCL=1, scan enabled
 ```
 
 | Widok | Interpretacja |
@@ -114,7 +115,7 @@ Potem, przy pierwszym bledzie transakcji (pierwszy logowany jest zawsze, nastepn
 raz na sekunde):
 
 ```
-[W][soft_i2c:3xx]: I2C transaction failed: error=2 addr=0x44 sda=1 scl=1 (total failures: 1)
+[W][soft_i2c:283]: I2C transaction failed: error=2 addr=0x44 sda=1 scl=1 (total failures: 1)
 ```
 
 Kody z `i2c::ErrorCode`: `2` brak ACK (urzadzenie nie odpowiada - adres, zasilanie, inny uklad),
