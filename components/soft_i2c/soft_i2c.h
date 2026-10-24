@@ -2,6 +2,12 @@
 
 #include <vector>
 
+// Banner wersji: setup() loguje go JAKO PIERWSZA linia. Jego obecnosc w logu dowodzi, ze
+// ta wersja komponentu trafila do builda (a nie stary clone z cache), a jego brak mowi,
+// ze setup() w ogole nie zostal wywolany.
+#define SOFT_I2C_VERSION "1.2.1"
+
+
 #include "esphome/components/i2c/i2c_bus.h"
 #include "esphome/core/component.h"
 #include "esphome/core/gpio.h"

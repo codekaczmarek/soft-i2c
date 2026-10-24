@@ -291,6 +291,7 @@ i2c::ErrorCode SoftI2CBus::fail_(i2c::ErrorCode err, uint8_t address) {
 // ---------------------------------------------------------------------------
 
 void SoftI2CBus::setup() {
+  ESP_LOGI(TAG, "soft_i2c v%s", SOFT_I2C_VERSION);
   if (this->sda_ == nullptr || this->scl_ == nullptr) {
     ESP_LOGE(TAG, "SDA and SCL pins must both be configured");
     return;

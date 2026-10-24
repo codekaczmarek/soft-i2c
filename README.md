@@ -104,9 +104,11 @@ zewneczne 4.7k-10k do VCC.
 |---|---|
 | `idle SDA=1 SCL=1` | pad reaguje, pull-up dziala, linie nie sa zwarte do masy |
 | `idle SDA=0` albo `SCL=0` | linia trzymana w dol: zwarcie, brak pull-upu albo zly pin |
-| `driven-low SDA=0 SCL=0` | wychodzace stejrunki dociagaja w dol - pad jest uzyteczny |
-| `driven-low SDA=1` (albo SCL=1) | pad nie dociaga w dol, mimo prosby o low - wyjscie jest zajete przez inna funkcje albo pin nie jest GPIO |
+| `driven-low SDA=0 SCL=0` | wychodzace stejrunki dociagaja w dol (ale na BK72xx patrz uwaga pod tabela) |
+| `driven-low SDA=1` (albo SCL=1) | na BK72xx **nie dowodzi niczego** - odczyt pinu bedacego wyjsciem zwraca rejestr danych (latch), nie stan padu |
 | `scan disabled` | w tym buildzie nie ma `scan: true`, wiec log nie pokazze adresu urzadzenia, nawet gdy odpowiada |
+
+> **Uwaga o polowie `driven-low`.** LibreTiny czyta pin przez `GPIO_Read()` -> `GPIO_RegType.data`, a gdy pad jest wyjsciem, ten rejestr jest **rejestrem danych wychodzacych**. Czyli `driven-low SDA=0` moge zobaczyc nawet na padzie, ktory fizycznie nic nie widzi. Rozstrzygajacy jest odczyt **idle** (obie linie puszczone MUSZA byc 1 - to ścieżka wejściowa, taki odczyt nie może kłamać) oraz skan. Jeśli idle jest OK, a skan pusty, a chcesz miec pewnosc co do wychodzacej sciezki: zaloz zworkę miedzy SDA i SCL (TX1 <-> RX1) i odpal probe ponownie - sterujac jedna linia w dol, druga (jako wejście) musi pokazac 0. To test padu bez logic analyzer.
 
 Potem, przy pierwszym bledzie transakcji (pierwszy logowany jest zawsze, nastepne nie czesciej niz
 raz na sekunde):
