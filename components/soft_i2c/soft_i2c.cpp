@@ -32,9 +32,9 @@ void SoftI2CBus::dump_config() {
   if (this->scl_ != nullptr) {
     this->scl_->dump_summary(scl_sum, sizeof(scl_sum));
   }
-  ESP_LOGCONFIG(TAG, "Software I2C bus: SDA=%s SCL=%s, %u Hz, %s pull-up, timeout %u us", sda_sum, scl_sum,
-                (unsigned) this->frequency_, this->internal_pullup_ ? "internal" : "external only",
-                (unsigned) this->timeout_us_);
+  ESP_LOGCONFIG(TAG, "soft_i2c v%s | Software I2C bus: SDA=%s SCL=%s, %u Hz, %s pull-up, timeout %u us",
+                SOFT_I2C_VERSION, sda_sum, scl_sum, (unsigned) this->frequency_,
+                this->internal_pullup_ ? "internal" : "external only", (unsigned) this->timeout_us_);
 }
 
 // ---------------------------------------------------------------------------
