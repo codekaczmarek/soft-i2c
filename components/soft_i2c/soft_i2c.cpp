@@ -46,13 +46,13 @@ void SoftI2CBus::dump_config() {
   }
   ESP_LOGCONFIG(TAG,
                 "soft_i2c v%s | bus SDA=%s SCL=%s %uHz %s-pullup timeout=%uus | setup=%d | probe idle=%d/%d "
-                "driven=%d/%d | scan=%d found=%d first=0x%02X | errors=%u last_err=%d@0x%02X jtagfilter=%d",
+                "driven=%d/%d | loop=%d/%d | scan=%d found=%d first=0x%02X | errors=%u last_err=%d@0x%02X jtagfilter=%d",
                 SOFT_I2C_VERSION, sda_sum, scl_sum, (unsigned) this->frequency_,
                 this->internal_pullup_ ? "internal" : "external", (unsigned) this->timeout_us_,
                 (int) this->setup_ran_, this->probe_idle_sda_, this->probe_idle_scl_, this->probe_drv_sda_,
-                this->probe_drv_scl_, (int) this->scan_ran_, this->scan_found_, (unsigned) this->scan_first_,
-                (unsigned) this->error_count_, this->last_err_, (unsigned) this->last_err_addr_,
-                (int) this->jtag_filter_off_);
+                this->probe_drv_scl_, this->probe_loop_sda_, this->probe_loop_scl_, (int) this->scan_ran_,
+                this->scan_found_, (unsigned) this->scan_first_, (unsigned) this->error_count_,
+                this->last_err_, (unsigned) this->last_err_addr_, (int) this->jtag_filter_off_);
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +351,23 @@ void SoftI2CBus::setup() {
   this->probe_idle_scl_ = (int) scl_idle;
   this->probe_drv_sda_ = (int) sda_driven_low;
   this->probe_drv_scl_ = (int) scl_driven_low;
+
+  // Test zwory (cross-read). Probe powyzej nie dowodzi sciezki wychodzacej na BK7231: odczyt padu
+  // bedacego wyjsciem zwraca rejestr danych (latch), wiec "driven=0" moze byc klamstwem w kazma
+  // strone. Tutaj sterujemy jedna linia w dol, a odczytujemy TEZ DRUGA, pracujaca jako wejscie -
+  // taki odczyt nie moze klamac. Przy zalozonej zworze SDA<->SCL poprawny pad MUSI dac 0 po drugiej
+  // stronie; czujnik CHT83xx trzyma obie linie w gorze, wiec 0 nie moze pochodzic od niego.
+  this->drive_sda_low_();
+  this->delay_();
+  this->probe_loop_scl_ = this->read_scl_() ? 0 : 1;
+  this->release_sda_();
+  this->release_scl_();
+  this->delay_();
+  this->drive_scl_low_();
+  this->delay_();
+  this->probe_loop_sda_ = this->read_sda_() ? 0 : 1;
+  this->release_scl_();
+  this->release_sda_();
   ESP_LOGI(TAG, "Line probe: idle SDA=%d SCL=%d, driven-low SDA=%d SCL=%d, scan %s", (int) sda_idle,
            (int) scl_idle, (int) sda_driven_low, (int) scl_driven_low, this->scan_ ? "enabled" : "disabled");
 

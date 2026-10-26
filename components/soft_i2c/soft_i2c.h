@@ -5,7 +5,7 @@
 // Banner wersji: setup() loguje go JAKO PIERWSZA linia. Jego obecnosc w logu dowodzi, ze
 // ta wersja komponentu trafila do builda (a nie stary clone z cache), a jego brak mowi,
 // ze setup() w ogole nie zostal wywolany.
-#define SOFT_I2C_VERSION "1.2.5"
+#define SOFT_I2C_VERSION "1.2.6"
 
 
 #include "esphome/components/i2c/i2c_bus.h"
@@ -107,6 +107,12 @@ class SoftI2CBus final : public i2c::I2CBus, public Component {
   /// w .cpp). Widoczne w linii dump_config(), zeby dalo sie odrozyc "filtr zdjety" od "pin nie
   /// reaguje z innego powodu".
   bool jtag_filter_off_{false};
+  /// Test zwory (cross-read): ile z linii "drugiej" spadly, gdy "bliska" byla sterowana w dol.
+  /// W przeciwienstwie do probe_drv_* odczyt dotyczy padu pracujacego jako WEJSCIE, wiec nie jest
+  /// obciazony problemem latcha (BK7231 na wyjsciu zwraca rejestr danych, nie stan padu).
+  /// Wartosc 1/1 ma sens tylko przy zalozonej zworze miedzy SDA i SCL.
+  int probe_loop_sda_{0};
+  int probe_loop_scl_{0};
   std::vector<uint8_t> scan_results_;
 };
 
