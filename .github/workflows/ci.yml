@@ -27,9 +27,9 @@ env:
 
 jobs:
   # ---- Bramka wersji: VERSION == makra komponentow == nazwa tagu ----
-  # Rozjazd (tag v1.3.x przeciw SOFT_I2C_VERSION "1.2.x") kosztowal nas runde debugowania na
-  # sprzecie: log z urzadzenia nie dal sie przypisac do konkretnego commita. Nie wystarcza
-  # "prosze pamietac" - zeby taka sytuacja sie nie powtorzyla, ten job musi byc zielony.
+  # Rozjazd (tag wskazywal v1.3.3, SOFT_I2C_VERSION w kodzie mial "1.2.7") kosztowal nas runde
+  # debugowania na sprzecie: linia "soft_i2c v1.2.7 ..." z logu urzadzenia nie dawala sie
+  # przypisac do commita ani do Release. "Prosze pamietac" nie dziala - dziala czerwony job.
   version-consistency:
     name: Spojnosc wersji (VERSION == makra == tag)
     runs-on: ubuntu-latest
@@ -41,6 +41,70 @@ jobs:
 
       - name: Porownaj VERSION z makrami komponentow i nazwa tagu
         run: bash scripts/check_version.sh
+
+  # ---- Bramka wejscia: zadnych sekretow w drzewie ani w calej historii ----
+  secret-scan:
+    name: Skan sekretow (drzewo + historia)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Pobrz repoztior z cala historia
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Pobierz i zweryfikuj gitleaks
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL "$url" -o /tmp/gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum --check --status
+          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      # Kontrola negatywna: bramka sekretow jest bezwartosciowa, jesli skaner
+      # nic nie detektuje. Zasynam syntetyczny (nie-dzialajacy) token GitHub PAT
+      # w osobnym repo tymczasowym i wymagam, zeby gitleaks go znalazl.
+      # Powod: w gitleaks >=8 podanie pliku konfiguracyjnego ZASTEPUJE reguly
+      # domyslne - plik z samym allowlistem wylacza detekcje calkowicie.
+      - name: Kontrola negatywna skanera
+        run: |
+          set -euo pipefail
+          probe=$(mktemp -d)
+          git init -q "$probe"
+          git -C "$probe" config user.email ci@localhost
+          git -C "$probe" config user.name 'CI probe'
+          printf 'GH_TOKEN=ghp_%s\n' "$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 36)" > "$probe/probe.env"
+          git -C "$probe" add -A
+          git -C "$probe" commit -qm 'syntetyczny probe - to nie jest sekret'
+          if gitleaks detect --source "$probe" --exit-code 1 >/dev/null 2>&1; then
+            echo "::error::Kontrola negatywna nie udana: gitleaks nie wykryl zasadzonego tokena."
+            echo "Bramka sekretow bylaby pozorna - zatrzymam build."
+            rm -rf "$probe"
+            exit 1
+          fi
+          rm -rf "$probe"
+          echo "Kontrola negatywna OK - skaner detektuje sekrety."
+
+      # Skan na regulach DOMYSLNYCH, bez --config i bez .gitleaks.toml w repo.
+      - name: Skanuj drzewo robocze
+        run: gitleaks detect --source . --exit-code 1
+
+      - name: Skanuj cala historie commitow
+        run: gitleaks git . --exit-code 1
+
+      # Reguly domyslne gitleaks NIE znaja formatu fine-grained PAT (`github_pat_...`)
+      # - potwierdzone kontrola negatywna. Sprawdzam te formaty osobno, po calym diffie
+      # historii, wiec lapie tez sekret usuniety w pozniejszym commicie.
+      - name: Skan uzupelniajacy (fine-grained PAT, formaty poza regulami)
+        run: |
+          set -euo pipefail
+          if git log --all -p -U0 | grep -aE 'github_pat_[A-Za-z0-9]{40,}|gh[surop]_[A-Za-z0-9]{36,}'; then
+            echo "::error::Wykryto token GitHub w formacie poza regulami gitleaks."
+            exit 1
+          fi
+          echo "Skan uzupelniajany czysty."
 
   # ---- Audyt samego workflow: least privilege, brak injection ----
   workflow-audit:
@@ -64,6 +128,14 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade "zizmor==1.31.1"
           zizmor --format plain .github
+
+      # actionlint i zizmor nie wiedza, ktore joby MUSZA istniec - a nadgryziony job oznaczalby
+      # cichy brak kontroli (albo odrzucenie workflowa przez GitHuba, jak przy utracie secret-scan).
+      - name: Kontrola struktury workflow (oczekiwane joby, needs, kroki)
+        run: |
+          set -euo pipefail
+          python -m pip install "pyyaml==6.0.3"
+          python scripts/check_workflow.py
 
   # ---- Walidacja YAML na wersji pinowanej i najnowszej ----
   validate:
@@ -144,18 +216,10 @@ jobs:
       - name: esphome config example.yaml
         run: |
           set -euo pipefail
-          # example.yaml demonstruje pobieranie komponentu z GitHuba (type: git + ref: v*), a to
-          # znaczy, ze walidacja zalezalaby od tego, czy dany tag juz istnieje na remote - job
-          # potrafilby zaczerwienic sie przez kolejnosc pusha brancha i tagu. Walidujemy wiec to
-          # samo YAML z zrodlem przekierowanym na drzewo z checkoutu.
-          sed -e 's|^\( *\)type: git$|\1type: local|' \
-              -e '\|^[[:space:]]*url: https://github.com/|d' \
-              -e '\|^[[:space:]]*ref: v|d' \
-              -e 's|^\( *\)type: local$|\1type: local\n\1path: ./components|' \
-              example.yaml > .ci-example.yaml
-          trap 'rm -f .ci-example.yaml' EXIT
-          sed -n '/^external_components:/,/^$/p' .ci-example.yaml
-          esphome config .ci-example.yaml
+          # Zrodlo komponentu jest juz przekierowane na drzewo przez krok "Wymus lokalne zrodlo
+          # komponentu w example.yaml", wiec ten krok nie dotiera do GitHuba i nie zalezy od
+          # tego, czy dany tag istnieje na remote.
+          esphome config example.yaml
 
       - name: esphome config test/ci-config.yaml
         run: esphome config test/ci-config.yaml
