@@ -19,7 +19,10 @@ concurrency:
 
 env:
   # Wersja ESPHome zsynchronizowana z Device Builderem (2026.9+ dla LibreTiny).
-  ESPHOME_VERSION: "2026.9.1"
+  # Kompilujemy na wersji, ktora realnie siedzi w ESPHome Device Builderze uzytkownika
+  # (2026.10.x). Wczesniejszy pin 2026.9.1 dal zielone "esphome config" i czerwony
+  # "esphome compile", bo to_code() wykonuje sie dopiero przy generowaniu kodu.
+  ESPHOME_VERSION: "2026.10.0"
   PYTHON_VERSION: "3.13"
   GITLEAKS_VERSION: "8.30.1"
   # sha256 archiwum release - pobierane binarium jest weryfikowane przed uzyciem
@@ -276,11 +279,39 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  # ---- Kompilacja na starszym ESPHome: to_code() nie jest objete "esphome config" ----
+  # Zielone "esphome config" na 2026.9.1 nic nie mowilo o sterowniku: to_code() wykonuje sie
+  # dopiero przy generowaniu kodu, a wiec dopiero w "esphome compile". Dokladnie tak przeoczylismy
+  # sensor.sub_sensors() - API ktore pojavilo sie w 2026.10 i nie istnieje w 2026.9.1 (run
+  # 40419236663: "AttributeError: module 'esphome.components.sensor' has no attribute
+  # 'sub_sensors'"). Ten job buduje ta sama konfiguracja na 2026.9.1, bez artefaktow: pilnuje,
+  # zeby sciezka kompatybilnosci w components/cht83xx/sensor.py byla sprawdzana przez CI, a nie
+  # przez pamiecia autora.
+  compile-legacy:
+    name: Kompilacja ESPHome 2026.9.1 (kompatybilnosc API)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [secret-scan, validate]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Zainstaluj ESPHome 2026.9.1
+        run: python -m pip install "esphome==2026.9.1"
+
+      - name: Kompilacja
+        run: esphome compile test/ci-config.yaml
+
   # ---- CD: Release na tagu v* (git tag v1.1.0 && git push --tags) ----
   release:
     name: Opublikuj Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [compile, workflow-audit, version-consistency]
+    needs: [compile, compile-legacy, workflow-audit, version-consistency]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

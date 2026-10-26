@@ -47,6 +47,20 @@ async def to_code(config: ConfigType) -> None:
     await cg.register_component(var, config)
     await i2c.register_i2c_device(var, config)
 
-    sensors = sensor.sub_sensors(config)
-    await sensors(CONF_TEMPERATURE, var.set_temperature_sensor)
-    await sensors(CONF_HUMIDITY, var.set_humidity_sensor)
+    # ESPHome 2026.10 wprowadzil sensor.sub_sensors(); w 2026.9.x go nie ma (AttributeError
+    # przy generowaniu kodu - uwaga: "esphome config" tego NIE lapie, bo to_code() nie jest
+    # wywolywane przy walidacji schematu, lapie to dopiero "esphome compile"). Schodzimy wiec do
+    # klasycznego new_sensor(), ktory istnieje w obu liniach wersji.
+    if hasattr(sensor, "sub_sensors"):
+        sensors = sensor.sub_sensors(config)
+        await sensors(CONF_TEMPERATURE, var.set_temperature_sensor)
+        await sensors(CONF_HUMIDITY, var.set_humidity_sensor)
+    else:
+        for conf, setter in (
+            (CONF_TEMPERATURE, var.set_temperature_sensor),
+            (CONF_HUMIDITY, var.set_humidity_sensor),
+        ):
+            sub_config = config.get(conf)
+            if sub_config is not None:
+                sub_sensor = await sensor.new_sensor(sub_config)
+                cg.add(setter(sub_sensor))

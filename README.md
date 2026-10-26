@@ -296,7 +296,8 @@ Repo ma pipeline w `.github/workflows/ci.yml` (dziala bez zadnych sekretow):
 | `secret-scan` | gitleaks: drzewo + cala historia, plus kontrola negatywna i skan uzupelniajacy |
 | `workflow-audit` | `actionlint` (skladnia) + `zizmor` (bezpieczenstwo workflow) + `scripts/check_workflow.py` (oczekiwane joby, `needs`, kroki) |
 | `validate` | `esphome config` na `example.yaml` i `test/ci-config.yaml` (macierz: 2026.9.1 i `latest`) |
-| `compile` | pelna kompilacja CBU/BK7231N, artefakty `.bin` i `.ota.rbl` na kazdym PR |
+| `compile` | pelna kompilacja CBU/BK7231N na `ESPHOME_VERSION` (2026.10.0, wersja Device Buildera), artefakty `.bin` i `.ota.rbl` na kazdym PR |
+| `compile-legacy` | ten sam build na ESPHome 2026.9.1 - `esphome config` nie wykonuje `to_code()`, wiec tylko realny build lapie API nieistniejace w starszych wersjach |
 | `release` | tylko na tagu `v*`: tworzy Release z binariami; wymaga zielonego `version-consistency` |
 
 Wydanie (w tej kolejnosci): podnies `VERSION` i oba makra w jednym commicie, otaguj **ten** commit

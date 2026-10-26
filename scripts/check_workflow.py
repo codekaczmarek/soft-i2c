@@ -40,6 +40,7 @@ REQUIRED_JOBS = {
     "workflow-audit",       # actionlint + zizmor
     "validate",             # esphome config na pinowanej i najnowszej wersji
     "compile",              # pelny build firmware dla CBU/BK7231N
+    "compile-legacy",       # ten sam build na ESPHome 2026.9.1 - pilnuje sciezki to_code() dla starszego API
     "release",              # publikacja Release na tagu v*
 }
 
