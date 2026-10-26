@@ -5,7 +5,7 @@
 // Banner wersji: setup() loguje go JAKO PIERWSZA linia. Jego obecnosc w logu dowodzi, ze
 // ta wersja komponentu trafila do builda (a nie stary clone z cache), a jego brak mowi,
 // ze setup() w ogole nie zostal wywolany.
-#define SOFT_I2C_VERSION "1.2.3"
+#define SOFT_I2C_VERSION "1.2.4"
 
 
 #include "esphome/components/i2c/i2c_bus.h"
@@ -98,6 +98,11 @@ class SoftI2CBus final : public i2c::I2CBus, public Component {
   uint32_t last_error_log_ms_{0};
   uint32_t recoveries_{0};
   uint32_t error_count_{0};
+  /// Last failure, recorded so dump_config() can show *what* failed. Needed because ESP_LOGW from
+  /// fail_() during setup() does not always reach the log view on this platform, while the
+  /// dump_config() line always does.
+  int last_err_{0};
+  uint8_t last_err_addr_{0};
   std::vector<uint8_t> scan_results_;
 };
 

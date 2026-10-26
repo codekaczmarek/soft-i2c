@@ -72,7 +72,11 @@ Klucze to `sda:` i `scl:` (nie `sda_pin:`). Opcja `internal_pullup: true` jest d
 warto ja wpisac jawnie. Nie ma opcji `sda_input_mode:` / `scl_input_mode:` - ich obecnosc w YAMLu
 konczy sie bled walidacji, a ich brak nie szkodzi.
 
-W ESPHome 2026.9+ sterowniki SHT/DHT wystawiaja**Dlaczego kod przelacza tryby zamiast pisac wartosci.** `pinMode(pin, OUTPUT)` to tu
+W ESPHome 2026.9+ sterowniki SHT/DHT wystawiaja dwa narzedzia, wiec nazwy ida do
+zagniezdzonych blokow `temperature:` / `humidity:` - plytki klucz `name:` zostal
+odrzucony przez walidator.
+
+**Dlaczego kod przelacza tryby zamiast pisac wartosci.** `pinMode(pin, OUTPUT)` to tu
 `gpio_config(id, GMODE_OUTPUT)`, a `GMODE_OUTPUT` zapisuje w rejestrze pinu wartosc `0x00`:
 kierunek „wyjscie" z wyzerowanym bitem stanu (`GCFG_OUTPUT_POS 1`). Samo przełączenie w OUTPUT
 startuje wiec od **stanu niskiego**. Open-drain emulujemy kierunkiem, nie wartoscia:
@@ -128,6 +132,60 @@ ustawienie pinu jako `INPUT` z wlaczonym pull-upem (`gpio_dma_pe(0)`) powoduje d
 stanu wejscia i gubione zbocza. Sciezka domyslna (`PULLUP`) jest poprawna sprzetowo,
 ale na tej platformie zawodna - stad w przykladach ANALOG plus rezystory 4.7 kOhm do VCC.
 
+## Sterownik CHT83xx (CHT8305 / CHT8310)
+
+Moduly T&H na CBU (Tuya, niebieska PCB) maja na pokladzie **Sensylink CHT8305**, nie SHT3xD.
+Wyglada jak SHT3x (I2C, temp+hum), ale mowi innym jezykiem: 8-bitowy wskaznik rejestru i
+16-bitowe wartosci big-endian, **bez CRC**. `sht3xd` wysyla za to slowa komend Sensiriona z
+CRC-8 i konczy na `mark_failed("Failed to set heater mode")` - CHT83xx nie ma grzejki, a slowo
+`0x3066` nie istnieje w jego tablicy komend. Stad drugi komponent w repo, `cht83xx`.
+
+Mape pinow i adres potwierdza watek elektroda o tym samym sprzecie (dzialajacy OpenBeken):
+**SDA = GPIO22, SCL = GPIO20**, adres **0x40** (AD0 do GND) - nie 0x44 ani 0x70.
+
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/codekaczmarek/soft-i2c.git
+      ref: v1.3.0
+
+i2c: []
+
+soft_i2c:
+  - id: bus_cht
+    sda: P22
+    scl: P20
+    frequency: 100kHz
+    scan: true
+
+sensor:
+  - platform: cht83xx
+    i2c_id: bus_cht
+    address: 0x40
+    update_interval: 60s
+    temperature:
+      name: Temperatura
+    humidity:
+      name: Wilgotnosc
+```
+
+Adres zalezy od AD0: GND `0x40`, VCC `0x41`, SDA `0x42`, SCL `0x43`. Jezeli `dump_config`
+pokazuje `manufacturer=0x0000`, czujnik nie odpowiada - sprawdz adres, piny i pull-upy.
+
+Wariant jest wykrywany z rejestru wersji: `0x8215` / `0x8315` to rodzina CHT831x, ktora wymaga
+trigera `oneshot` (rejestr `0x0F`) i osobnego odczytu wilgotnosci z rejestru `0x01`, bo wspólne
+okno odczytu `0x00..0x03` trafia tam na bit parzystosci ALERT. Konwersje:
+
+| Wariant | Temperatura | Wilgotnosc |
+|---|---|---|
+| CHT8305 | `raw * 165/65535 - 40` | `raw * 100/65535` |
+| CHT831x | `(raw >> 3) * 0.03125` | `(raw & 0x7FFF) / 32768 * 100` |
+
+Zrodla protokolu: `drv_cht8305.c` z OpenBK7231T_App (sterownik utrzymywany dla tego sprzetu) i
+RobTillaart/CHT8305 (mapa rejestrow z datasheetu: `0x00` TEMP, `0x01` HUM, `0x02` STATUS,
+`0x03` CFG, `0x04` C_RATE, `0xFE` manufacturer = `0x5959`, `0xFF` wersja).
+
 ## Jak to dziala
 
 Klasa implementuje `i2c::I2CBus` - ten sam interfejs, ktory spelnia natywne `i2c-hard`.
@@ -165,6 +223,10 @@ daljej) dziala bez zmian, bo dostaje `I2CBus&`.
 | `components/soft_i2c/__init__.py` | schemat YAML, rejestracja magistrali i pinow |
 | `components/soft_i2c/soft_i2c.h` | deklatacja `SoftI2CBus` |
 | `components/soft_i2c/soft_i2c.cpp` | bit-bang: START, stop, bajt, ACK, odzysk |
+| `components/cht83xx/__init__.py` | docstring sterownika CHT83xx (adresy AD0, protokol) |
+| `components/cht83xx/sensor.py` | schemat YAML platformy `sensor: cht83xx` |
+| `components/cht83xx/cht83xx.h` | deklatacja `CHT83XXComponent` |
+| `components/cht83xx/cht83xx.cpp` | odczyt rejestrow, wykrywanie wariantu, konwersje |
 | `example.yaml` | pelny projekt na CBU + SHT3xD |
 
 Zgloszenia i pytania: przez Issues. Chetnie poprawie pod inne uklady BK7231, jezeli

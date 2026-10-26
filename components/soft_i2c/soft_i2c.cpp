@@ -34,12 +34,12 @@ void SoftI2CBus::dump_config() {
   }
   ESP_LOGCONFIG(TAG,
                 "soft_i2c v%s | bus SDA=%s SCL=%s %uHz %s-pullup timeout=%uus | setup=%d | probe idle=%d/%d "
-                "driven=%d/%d | scan=%d found=%d first=0x%02X | errors=%u",
+                "driven=%d/%d | scan=%d found=%d first=0x%02X | errors=%u last_err=%d@0x%02X",
                 SOFT_I2C_VERSION, sda_sum, scl_sum, (unsigned) this->frequency_,
                 this->internal_pullup_ ? "internal" : "external", (unsigned) this->timeout_us_,
                 (int) this->setup_ran_, this->probe_idle_sda_, this->probe_idle_scl_, this->probe_drv_sda_,
                 this->probe_drv_scl_, (int) this->scan_ran_, this->scan_found_, (unsigned) this->scan_first_,
-                (unsigned) this->error_count_);
+                (unsigned) this->error_count_, this->last_err_, (unsigned) this->last_err_addr_);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +278,8 @@ void SoftI2CBus::log_scan_results_() {
 
 i2c::ErrorCode SoftI2CBus::fail_(i2c::ErrorCode err, uint8_t address) {
   this->error_count_++;
+  this->last_err_ = (int) err;
+  this->last_err_addr_ = address;
   // Rate limited: a dead sensor polled every 5 s should not turn the log into a firehose, but a
   // one-second window keeps the failure visible right when it starts happening. The first failure
   // is never dropped - last_error_log_ms_ starts at 0, so a boot-time error inside the first
