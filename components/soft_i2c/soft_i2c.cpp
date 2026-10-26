@@ -13,6 +13,40 @@
 // the filter active every transaction times out (last_err=2) and the line probe reads driven=0/0.
 // Declared locally, exactly like the SDK's own caller does - there is no public header for it.
 extern "C" void gpio_ops_disable_filter(void);
+
+// Rejestr konfiguracyjny padu BK7231: beken378/driver/gpio/gpio.h:17-19 definiuje
+// GPIO_BASE_ADDR = 0x0802800 oraz REG_GPIO_n_CONFIG = base + n*4 (jedno slowo na pin).
+// Mapa bitow z tego samego naglowka (GCFG_*_POS): b0 INPUT, b1 OUTPUT, b2 INPUT_ENABLE,
+// b3 OUTPUT_ENABLE, b4 PULL_MODE, b5 PULL_ENABLE, b6 FUNCTION_ENABLE, b7 INPUT_MONITOR.
+// Istotne dla tej plytki: SDA=GPIO22 i SCL=GPIO20 to jednoczesnie JTAG TDI/TCK i linie flasha
+// FSI/FSCK (mapa bk7231-qfn32), wiec sam odczyt logiczny nic nie dowodzi - trzeba zobaczyc, co
+// faktycznie siedzi w rejestrze padu.
+static const uint32_t BK_GPIO_CFG_BASE = 0x00802800u;
+static const uint32_t BK_PIN_UNKNOWN = 0xFFFFFFFFu;
+
+static uint32_t bk_pin_cfg_(uint32_t pin) { return *(volatile uint32_t *) (BK_GPIO_CFG_BASE + pin * 4u); }
+
+// Numer GPIO odczytany z dump_summary() - jedynego publicznego API bazowej klasy GPIOPin, ktore
+// go zawiera (get_pin() siedzi dopiero na InternalGPIOPin, a rzutowanie w dol jest UB bez RTTI,
+// ktorego ESPHome nie wlacza). LibreTiny zapisuje tu sama liczbe ("22"), wiec bierzemy pierwszy
+// blok cyfr; brak cyfr = nieznany pin, wtedy pola cfgDrv zostaja zerowe.
+static uint32_t bk_pin_number_(esphome::GPIOPin *pin) {
+  char buf[esphome::GPIO_SUMMARY_MAX_LEN];
+  if (pin == nullptr || pin->dump_summary(buf, sizeof(buf)) == 0) {
+    return BK_PIN_UNKNOWN;
+  }
+  uint32_t value = 0;
+  bool any = false;
+  for (const char *p = buf; *p != '\0'; ++p) {
+    if (*p >= '0' && *p <= '9') {
+      value = value * 10u + (uint32_t) (*p - '0');
+      any = true;
+    } else if (any) {
+      break;
+    }
+  }
+  return any ? value : BK_PIN_UNKNOWN;
+}
 #endif
 
 namespace esphome {
@@ -46,11 +80,12 @@ void SoftI2CBus::dump_config() {
   }
   ESP_LOGCONFIG(TAG,
                 "soft_i2c v%s | bus SDA=%s SCL=%s %uHz %s-pullup timeout=%uus | setup=%d | probe idle=%d/%d "
-                "driven=%d/%d | loop=%d/%d | scan=%d found=%d first=0x%02X | errors=%u last_err=%d@0x%02X jtagfilter=%d",
+                "driven=%d/%d | loop=%d/%d | cfgdrv=0x%04X/0x%04X | scan=%d found=%d first=0x%02X | errors=%u last_err=%d@0x%02X jtagfilter=%d",
                 SOFT_I2C_VERSION, sda_sum, scl_sum, (unsigned) this->frequency_,
                 this->internal_pullup_ ? "internal" : "external", (unsigned) this->timeout_us_,
                 (int) this->setup_ran_, this->probe_idle_sda_, this->probe_idle_scl_, this->probe_drv_sda_,
-                this->probe_drv_scl_, this->probe_loop_sda_, this->probe_loop_scl_, (int) this->scan_ran_,
+                this->probe_drv_scl_, this->probe_loop_sda_, this->probe_loop_scl_,
+                (unsigned) this->probe_cfg_sda_drv_, (unsigned) this->probe_cfg_scl_drv_, (int) this->scan_ran_,
                 this->scan_found_, (unsigned) this->scan_first_, (unsigned) this->error_count_,
                 this->last_err_, (unsigned) this->last_err_addr_, (int) this->jtag_filter_off_);
 }
@@ -339,10 +374,18 @@ void SoftI2CBus::setup() {
   const bool scl_idle = this->read_scl_();
   this->drive_scl_low_();
   this->delay_();
+#if defined(USE_BK72XX)
+  const uint32_t scl_num = bk_pin_number_(this->scl_);
+  this->probe_cfg_scl_drv_ = scl_num != BK_PIN_UNKNOWN ? bk_pin_cfg_(scl_num) : 0u;
+#endif
   const bool scl_driven_low = !this->read_scl_();
   this->release_scl_();
   this->drive_sda_low_();
   this->delay_();
+#if defined(USE_BK72XX)
+  const uint32_t sda_num = bk_pin_number_(this->sda_);
+  this->probe_cfg_sda_drv_ = sda_num != BK_PIN_UNKNOWN ? bk_pin_cfg_(sda_num) : 0u;
+#endif
   const bool sda_driven_low = !this->read_sda_();
   this->release_sda_();
 
