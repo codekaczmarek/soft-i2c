@@ -32,9 +32,14 @@ void SoftI2CBus::dump_config() {
   if (this->scl_ != nullptr) {
     this->scl_->dump_summary(scl_sum, sizeof(scl_sum));
   }
-  ESP_LOGCONFIG(TAG, "soft_i2c v%s | Software I2C bus: SDA=%s SCL=%s, %u Hz, %s pull-up, timeout %u us",
+  ESP_LOGCONFIG(TAG,
+                "soft_i2c v%s | bus SDA=%s SCL=%s %uHz %s-pullup timeout=%uus | setup=%d | probe idle=%d/%d "
+                "driven=%d/%d | scan=%d found=%d first=0x%02X | errors=%u",
                 SOFT_I2C_VERSION, sda_sum, scl_sum, (unsigned) this->frequency_,
-                this->internal_pullup_ ? "internal" : "external only", (unsigned) this->timeout_us_);
+                this->internal_pullup_ ? "internal" : "external", (unsigned) this->timeout_us_,
+                (int) this->setup_ran_, this->probe_idle_sda_, this->probe_idle_scl_, this->probe_drv_sda_,
+                this->probe_drv_scl_, (int) this->scan_ran_, this->scan_found_, (unsigned) this->scan_first_,
+                (unsigned) this->error_count_);
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +324,12 @@ void SoftI2CBus::setup() {
   this->delay_();
   const bool sda_driven_low = !this->read_sda_();
   this->release_sda_();
+
+  this->probe_ran_ = true;
+  this->probe_idle_sda_ = (int) sda_idle;
+  this->probe_idle_scl_ = (int) scl_idle;
+  this->probe_drv_sda_ = (int) sda_driven_low;
+  this->probe_drv_scl_ = (int) scl_driven_low;
   ESP_LOGI(TAG, "Line probe: idle SDA=%d SCL=%d, driven-low SDA=%d SCL=%d, scan %s", (int) sda_idle,
            (int) scl_idle, (int) sda_driven_low, (int) scl_driven_low, this->scan_ ? "enabled" : "disabled");
 
@@ -330,7 +341,13 @@ void SoftI2CBus::setup() {
   if (this->scan_) {
     this->i2c_scan_();
     this->log_scan_results_();
+    this->scan_ran_ = true;
+    this->scan_found_ = (int) this->scan_results_.size();
+    if (!this->scan_results_.empty()) {
+      this->scan_first_ = this->scan_results_.front();
+    }
   }
+  this->setup_ran_ = true;
 }
 
 void SoftI2CBus::loop() {

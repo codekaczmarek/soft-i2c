@@ -5,7 +5,7 @@
 // Banner wersji: setup() loguje go JAKO PIERWSZA linia. Jego obecnosc w logu dowodzi, ze
 // ta wersja komponentu trafila do builda (a nie stary clone z cache), a jego brak mowi,
 // ze setup() w ogole nie zostal wywolany.
-#define SOFT_I2C_VERSION "1.2.2"
+#define SOFT_I2C_VERSION "1.2.3"
 
 
 #include "esphome/components/i2c/i2c_bus.h"
@@ -45,6 +45,17 @@ class SoftI2CBus final : public i2c::I2CBus, public Component {
   void set_internal_pullup(bool internal_pullup) { this->internal_pullup_ = internal_pullup; }
   void set_timeout_us(uint32_t timeout_us) { this->timeout_us_ = timeout_us; }
   void set_bus_recovery(bool bus_recovery) { this->bus_recovery_ = bus_recovery; }
+
+  // Diagnostyka jest zgłaszana z dump_config(): to jedyne wywołanie logu, którego output na
+  // pewno dociera do podglądu logów. Linii z setup() nie sposób było zobaczyć w czterech
+  // kolejnych buildach, więc żadnemu logowi z setup() nie ufażemy - stan jest zapamiętywany
+  // tutaj i drukowany razem z numerem wersji w tej samej linii.
+  bool setup_ran_{false};
+  bool probe_ran_{false};
+  int probe_idle_sda_{-1}, probe_idle_scl_{-1}, probe_drv_sda_{-1}, probe_drv_scl_{-1};
+  bool scan_ran_{false};
+  int scan_found_{-1};
+  uint8_t scan_first_{0};
 
  protected:
   // --- pin mode helpers -------------------------------------------------
