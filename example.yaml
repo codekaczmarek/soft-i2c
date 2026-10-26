@@ -16,7 +16,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/codekaczmarek/soft-i2c.git
-      ref: v1.0.0
+      ref: v1.3.4
 
 preferences:
   flash_write_interval: 1min
@@ -47,26 +47,29 @@ web_server:
 # so the list stays empty and soft_i2c below provides the bus.
 i2c: []
 
-# Your module has the sensor on TX1/RX1 (P11/P10) = UART1. Bit-bang does not care about the
-# alternate functions, so these pins work here - with one caveat: UART1 is also the flashing
-# port. Log output stays on the default UART2 (P0/P1), so nothing else conflicts; just do the
-# first flash over UART1 with the bus attached (idle-high is fine for both) or use OTA later.
+# Sensor pins of the factory Tuya T&H board (CBU / BK7231N): SDA=P22, SCL=P20, address 0x40.
+# These two pads are shared with JTAG (TDI/TCK) and the flash lines (FSI/FSCK), which is why the
+# Beken SDK filters writes to GPIO20..23 - soft_i2c removes that filter in setup() and reports
+# what it found. TX1/RX1 (P11/P10) do NOT work for bit-bang: they are UART1, and the UART block
+# owns the pad. Log output lives on UART2 (P0/P1), so this choice costs you nothing there.
 soft_i2c:
-  - id: bus_sht
-    sda: TX1
-    scl: RX1
+  - id: bus_i2c
+    sda: P22
+    scl: P20
     frequency: 100kHz
     scan: true
     internal_pullup: true
 
 sensor:
-  - platform: sht3xd
+  # Sensylink CHT8305/CHT8310. NOT sht3xd: that driver speaks Sensirion (command words with
+  # CRC-8) and tries to disable a heater this chip does not have, so it fails in setup().
+  - platform: cht83xx
     temperature:
       name: "${upper_devicename} Temperature"
     humidity:
       name: "${upper_devicename} Humidity"
-    address: 0x44
-    i2c_id: bus_sht
+    address: 0x40
+    i2c_id: bus_i2c
     update_interval: 5min
 
 binary_sensor:

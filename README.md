@@ -32,7 +32,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/codekaczmarek/soft-i2c.git
-      ref: v1.0.0
+      ref: v1.3.4
 ```
 
 Lokalnie (katalog `esphome-components/` obok pliku YAML, a w nim `soft_i2c/`):
@@ -105,22 +105,31 @@ zewneczne 4.7k-10k do VCC.
 
 ## Diagnostyka
 
-`setup()` nadaje jedna linie, ktora rozstrzyga, czy winny jest pad, czy urzadzenie:
+`dump_config()` nadaje **jedną linię** (na BK72xx logi z `setup()` potrafią zaginąć, dlatego wszystko siedzi w `dump_config` - tam dociera zawsze):
 
 ```
-[I][soft_i2c:294]: soft_i2c v1.2.1
-[I][soft_i2c:322]: Line probe: idle SDA=1 SCL=1, driven-low SDA=1 SCL=1, scan enabled
+[C][soft_i2c:047]: soft_i2c v1.3.4 | bus SDA=22 SCL=20 100000Hz internal-pullup timeout=10000us | setup=1 | probe idle=1/1 driven=1/1 | loop=1/1 | cfgdrv=0x000A/0x000A | scan=1 found=1 first=0x40 | errors=0 last_err=0@0x00 jtagfilter=1
 ```
 
-| Widok | Interpretacja |
+| Pole | Co znaczy |
 |---|---|
-| `idle SDA=1 SCL=1` | pad reaguje, pull-up dziala, linie nie sa zwarte do masy |
-| `idle SDA=0` albo `SCL=0` | linia trzymana w dol: zwarcie, brak pull-upu albo zly pin |
-| `driven-low SDA=0 SCL=0` | wychodzace stejrunki dociagaja w dol (ale na BK72xx patrz uwaga pod tabela) |
-| `driven-low SDA=1` (albo SCL=1) | na BK72xx **nie dowodzi niczego** - odczyt pinu bedacego wyjsciem zwraca rejestr danych (latch), nie stan padu |
-| `scan disabled` | w tym buildzie nie ma `scan: true`, wiec log nie pokazze adresu urzadzenia, nawet gdy odpowiada |
+| `bus SDA=22 SCL=20` | numery GPIO, nie numery pinów modułu - P22 to GPIO22 |
+| `setup=1` | `setup()` przeszedl do konca (`0` = wyjatek wewnatrz, reszta pól jest bezwartosciowa) |
+| `probe idle=1/1` | obie linie puszczone sa w gorze (pull-up dziala, brak zwarcia do masy). `0` po którejś stronie = zwarcie, brak pull-upu albo zly pad |
+| `driven=1/1` | pin czytany **jako wyjscie** pokazał 0 po sterowaniu w dol. Na BK72xx **nie dowodzi niczego** - patrz uwaga pod tabela |
+| `loop=1/1` | test zwory: sterowalem SDA w dol i **SCL czytana jako wejście** pokazala 0 (oraz odwrotnie). `0/0` przy zworze = wychodzaca sciezka padu nie dziala |
+| `cfgdrv=0x000A/0x000A` | surowy `REG_GPIO_n_CONFIG` padu zmierzony w trakcie sterowania w dol. Bity: 0=INPUT, 1=OUTPUT, 2=INPUT_ENABLE, 3=OUTPUT_ENABLE, 4/5=pull. `0x000A` = OUTPUT+OUTPUT_ENABLE. `0x0000` = zapis SDK nie dolaczyl |
+| `scan=1 found=1 first=0x40` | skan magistrali byl wlaczony (`scan: true`) i znaleziono jeden adres |
+| `errors=1 last_err=2@0x40` | liczba bledow transakcji i ostatni blad: `2` = NACK (nikt nie odpowiada), `3` = timeout (SCL nie wchodzi w gore), `4` = magistrala nie zainicjalizowana, `7` = CRC |
+| `jtagfilter=1` | `gpio_ops_disable_filter()` zostal wywolany. **Nie** znaczy, ze pady 20..23 sa wolne - patrz sekcja CHT83xx |
 
-> **Uwaga o polowie `driven-low`.** LibreTiny czyta pin przez `GPIO_Read()` -> `GPIO_RegType.data`, a gdy pad jest wyjsciem, ten rejestr jest **rejestrem danych wychodzacych**. Czyli `driven-low SDA=0` moge zobaczyc nawet na padzie, ktory fizycznie nic nie widzi. Rozstrzygajacy jest odczyt **idle** (obie linie puszczone MUSZA byc 1 - to ścieżka wejściowa, taki odczyt nie może kłamać) oraz skan. Jeśli idle jest OK, a skan pusty, a chcesz miec pewnosc co do wychodzacej sciezki: zaloz zworkę miedzy SDA i SCL (TX1 <-> RX1) i odpal probe ponownie - sterujac jedna linia w dol, druga (jako wejście) musi pokazac 0. To test padu bez logic analyzer.
+> **Uwaga o `driven=`.** LibreTiny czyta pin przez `GPIO_Read()`, a gdy pad jest wyjsciem, ten
+> odczyt zwraca **rejestr danych wychodzacych**, nie stan padu. Dlatego `driven=0/0` moze oznaczac
+> zarowno "pad nie dociaga", jak i "nic z tego nie wynika". Rozstrzygajace sa dwa pola: `loop=`
+> (odczyt drugiej linii jako wejscie, wymaga zwory miedzy SDA i SCL) oraz `cfgdrv=` (rejestr padu
+> pod obciazeniem). Rozstrzygniecie: `cfgdrv` ma bity OUTPUT+OUTPUT_ENABLE, a `loop` wciaz `0/0`
+> => zapis wszedl, ale padem rzadzi mux innego bloku (JTAG/flash - GPIO20/22 to TCK/TDI i FSCK/FSI).
+> `cfgdrv=0x0000` => zapis nie dolaczyl i przyczyny trzeba szukac wyzej w łańcuchu.
 
 Potem, przy pierwszym bledzie transakcji (pierwszy logowany jest zawsze, nastepne nie czesciej niz
 raz na sekunde):
@@ -155,7 +164,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/codekaczmarek/soft-i2c.git
-      ref: v1.3.0
+      ref: v1.3.4
 
 i2c: []
 
@@ -250,13 +259,29 @@ external_components:
   - source:
       type: git
       url: https://github.com/codekaczmarek/soft-i2c.git
-      ref: v1.0.0
+      ref: v1.3.4
 ```
 
 Repo jest publiczne, wiec nie potrzeba zadnych token6w. Sekrety (SSID, haslo WiFi,
 haslo OTA, klucz API) trafiaja do `secrets.yaml` w katalogu dodatka, nie do YAML-a
 urzdzenia. Binariow z Release zwykle nie uzywasz - Device Builder buduje firmware z
 Twojej konfiguracji, z Twoim kluczem API.
+
+## Wersjonowanie
+
+Numer releases bierze sie z pliku `VERSION` w glownym katalogu. Ten sam numer musza miec makra
+`SOFT_I2C_VERSION` (`components/soft_i2c/soft_i2c.h`) i `CHT83XX_VERSION`
+(`components/cht83xx/cht83xx.h`) - oba trafiaja do logu urzadzenia, wiec wlasnie one lacza linie
+`soft_i2c v...` z konkretnym Release i konkretnym commitem.
+
+Podnoszac wersje zmien w jednym commicie trzy rzeczy: `VERSION`, oba makra i przyklady `ref:`
+w tym README. Nazwe tagu pilnuje CI (`scripts/check_version.sh`, job "Spojnosc wersji"): `v1.3.4`
+przechodzi tylko z `VERSION` = `1.3.4`, wiec otagowanie commita z innym numerem daje czerwony job
+i blokuje Release.
+
+Historia: przez kilka wydania tag (`v1.3.x`) i `SOFT_I2C_VERSION` (`1.2.x`) rozjezdzaly sie ze
+sobą, wiec log z urzadzenia nie mowil, ktory obraz jest wgrany - i trudno bylo udowodnic, ktora
+wersja filtru JTAG faktycznie kreci sie na sprzecie.
 
 ## CI/CD
 

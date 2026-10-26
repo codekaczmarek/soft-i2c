@@ -1,5 +1,8 @@
 #pragma once
 
+// Wersja releases = plik VERSION (jedno zrodlo prawdy); pilnowane przez CI job "Spojnosc wersji".
+#define CHT83XX_VERSION "1.3.4"
+
 #include "esphome/core/component.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"

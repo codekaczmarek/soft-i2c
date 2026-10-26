@@ -24,20 +24,27 @@ logger:
 # Warstwa natywna jest niezbedna - soft_i2c rejestruje sie jako magistrala i2c.
 i2c: []
 
+# Piny z fabrycznej plytki Tuya T&H (potwierdzonej logami): SDA=P22, SCL=P20.
+# Uwaga, ktora kosztowala nas runde debugowania: to NIE sa neutralne GPIO. Wg mapy sledzi BK7231
+# GPIO22 = JTAG TDI + FLASH FSI, GPIO20 = JTAG TCK + FLASH FSCK. Dlatego soft_i2c w setup() zdjmuje
+# filtr GPIO SDK na GPIO20..23 (gpio_ops_disable_filter) i raportuje odczyt rejestru padu.
+# TX1/RX1 (P11/P10) NIE nadaja sie do bit-bangu - to UART1, pad przejmuje blok UART.
 soft_i2c:
   - id: i2c_soft
-    sda: TX1
-    scl: RX1
+    sda: P22
+    scl: P20
     frequency: 100kHz
     scan: true
     timeout: 10ms
     bus_recovery: false
 
-# Od ESPHome 2026.9 encje sht3xd ida zagniezdzone (temperature:/humidity:),
-# nie jako plytkie pola name:/id: na poziomie platformy.
+# CHT83xx (Sensylink CHT8305/CHT8310), nie sht3xd: ten ostatni wysyla komendy Sensirion z CRC-8
+# i probuje wylaczyc grzejke (0x3066), ktorej CHT8305 nie ma - mark_failed("Failed to set heater
+# mode"). Encje ida zagniezdzone (temperature:/humidity:), jak w kazdym sterowniku od 2026.9.
 sensor:
-  - platform: sht3xd
+  - platform: cht83xx
     i2c_id: i2c_soft
+    address: 0x40
     update_interval: 60s
     temperature:
       id: temperature

@@ -40,8 +40,8 @@ void CHT83XXComponent::dump_config() {
   // Everything that matters is on this one line: it is the only log output that reliably reaches
   // the log view on this platform, so it carries the detected model rather than just the address.
   ESP_LOGCONFIG(TAG,
-                "CHT83xx: manufacturer=0x%04X version=0x%04X model=%s", this->manufacturer_id_,
-                this->version_id_, this->is_831x_ ? "CHT831x" : "CHT8305");
+                "CHT83xx v%s: manufacturer=0x%04X version=0x%04X model=%s", CHT83XX_VERSION,
+                this->manufacturer_id_, this->version_id_, this->is_831x_ ? "CHT831x" : "CHT8305");
   LOG_I2C_DEVICE(this);
   LOG_UPDATE_INTERVAL(this);
   LOG_SENSOR("  ", "Temperature", this->temperature_sensor_);

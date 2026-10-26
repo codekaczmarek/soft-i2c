@@ -5,7 +5,10 @@
 // Banner wersji: setup() loguje go JAKO PIERWSZA linia. Jego obecnosc w logu dowodzi, ze
 // ta wersja komponentu trafila do builda (a nie stary clone z cache), a jego brak mowi,
 // ze setup() w ogole nie zostal wywolany.
-#define SOFT_I2C_VERSION "1.2.7"
+// Wersja releases = plik VERSION w glownym katalogu (jedno zrodlo prawdy). CI job
+// "Spojnosc wersji" wywala sie, jesli ktokolwiek z nich sie rozjedzie - albo jesli tag
+// v* nie rowna sie VERSION. Nie podnos tej liczby w samotnosci.
+#define SOFT_I2C_VERSION "1.3.4"
 
 
 #include "esphome/components/i2c/i2c_bus.h"
