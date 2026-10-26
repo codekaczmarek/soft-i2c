@@ -5,7 +5,7 @@
 // Banner wersji: setup() loguje go JAKO PIERWSZA linia. Jego obecnosc w logu dowodzi, ze
 // ta wersja komponentu trafila do builda (a nie stary clone z cache), a jego brak mowi,
 // ze setup() w ogole nie zostal wywolany.
-#define SOFT_I2C_VERSION "1.2.4"
+#define SOFT_I2C_VERSION "1.2.5"
 
 
 #include "esphome/components/i2c/i2c_bus.h"
@@ -103,6 +103,10 @@ class SoftI2CBus final : public i2c::I2CBus, public Component {
   /// dump_config() line always does.
   int last_err_{0};
   uint8_t last_err_addr_{0};
+  /// Ustawione, jesli setup() zdjal filtr JTAG SDK-u (patrz komentarz przy gpio_ops_disable_filter
+  /// w .cpp). Widoczne w linii dump_config(), zeby dalo sie odrozyc "filtr zdjety" od "pin nie
+  /// reaguje z innego powodu".
+  bool jtag_filter_off_{false};
   std::vector<uint8_t> scan_results_;
 };
 

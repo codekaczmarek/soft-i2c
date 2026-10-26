@@ -90,9 +90,16 @@ nie zapisuje latcha, tylko przelacza tryb (`pinSetOutputPull` w `wiring_private.
 `digital_write(false)` przenosi pad w INPUT_PULLDOWN (0x2C), a `pin_mode(FLAG_OUTPUT)` domyka go w
 OUTPUT(0x00) - bez przejazdu przez stan wysoki.
 
-Filtr JTAG (`gpio_ops_filter`) ignoruje odczyty i zapisy tylko dla GPIO20..23, a LibreTiny i tak
-wywoluje `gpio_ops_disable_filter()` przy starcie (`cores/beken-72xx/base/fixups/sys_ctrl.c`), wiec
-nawet one dzialaja - ale to piny JTAG, na magistrale wez inne. SDK nie podaje rezystancji
+Filtr JTAG (`gpio_ops_filter` w `beken378/driver/gpio/gpio.c`) ignoruje odczyty i zapisy dla
+GPIO20..23 i **w ESPHome jest zawsze wlaczony**: `gpio_ops_disable_filter()` jest wywolywany w
+calym stosie tylko w jednym miejscu - `sctrl_enter_rtos_deep_sleep_fix()`, dokad trafia sie
+przez `lt_deep_sleep_enter()`, czyli przez konfiguracje `deep_sleep:`. Build bez `deep_sleep:`
+(taki jak diagnostyka na stole) nigdy tej sciezki nie wchodzi, wiec kazdy `gpio_config()` i
+`gpio_output()` na GPIO20..23 jest cicho polykany: pad nie drgnie, brak bledu, transakcja konczy
+sie timeoutem. `setup()` soft_i2c zdejmuje ten filtr sam (`jtagfilter=1` w linii diagnostycznej)
+i dopiero wtedy P20/P22 - piny, na ktorych czujnik CHT8305 wisi fizycznie - da sie obsluzyc.
+Rezerwa bez filtra: linie JTDI/JTDO/JTCK/JTMS, czyli programator. `CFG_JTAG_ENABLE` jest i tak 0.
+SDK nie podaje rezystancji
 wewnetrzego pull-upu (jest sam bit zalaczania), wiec przy 100 kHz i dluzszych przewodach daj
 zewneczne 4.7k-10k do VCC.
 

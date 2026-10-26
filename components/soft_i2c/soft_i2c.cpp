@@ -3,6 +3,18 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
+#if defined(USE_BK72XX)
+// BK7231 SDK ships a "JTAG pad filter" (beken378/driver/gpio/gpio.c: gpio_ops_filter) that silently
+// swallows gpio_config() and gpio_output() for GPIO20..23 - no error, the pad simply never moves.
+// The SDK clears it only in gpio_ops_disable_filter(), and the only caller of that sits on the
+// deep-sleep entry path (sys_ctrl.c, and LibreTiny's copy in sctrl_enter_rtos_deep_sleep_fix()).
+// ESPHome on bk72xx has no deep sleep, so that path never runs and the filter stays active forever.
+// This matters because the CHT8305 on the Tuya CBU T&H boards is hardwired to GPIO22/GPIO20: with
+// the filter active every transaction times out (last_err=2) and the line probe reads driven=0/0.
+// Declared locally, exactly like the SDK's own caller does - there is no public header for it.
+extern "C" void gpio_ops_disable_filter(void);
+#endif
+
 namespace esphome {
 namespace soft_i2c {
 
@@ -34,12 +46,13 @@ void SoftI2CBus::dump_config() {
   }
   ESP_LOGCONFIG(TAG,
                 "soft_i2c v%s | bus SDA=%s SCL=%s %uHz %s-pullup timeout=%uus | setup=%d | probe idle=%d/%d "
-                "driven=%d/%d | scan=%d found=%d first=0x%02X | errors=%u last_err=%d@0x%02X",
+                "driven=%d/%d | scan=%d found=%d first=0x%02X | errors=%u last_err=%d@0x%02X jtagfilter=%d",
                 SOFT_I2C_VERSION, sda_sum, scl_sum, (unsigned) this->frequency_,
                 this->internal_pullup_ ? "internal" : "external", (unsigned) this->timeout_us_,
                 (int) this->setup_ran_, this->probe_idle_sda_, this->probe_idle_scl_, this->probe_drv_sda_,
                 this->probe_drv_scl_, (int) this->scan_ran_, this->scan_found_, (unsigned) this->scan_first_,
-                (unsigned) this->error_count_, this->last_err_, (unsigned) this->last_err_addr_);
+                (unsigned) this->error_count_, this->last_err_, (unsigned) this->last_err_addr_,
+                (int) this->jtag_filter_off_);
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +316,12 @@ void SoftI2CBus::setup() {
     ESP_LOGE(TAG, "SDA and SCL pins must both be configured");
     return;
   }
+#if defined(USE_BK72XX)
+  // Must happen before the pins are configured: with the filter active, every gpio_config() and
+  // gpio_output() on GPIO20..23 is dropped, so the pad never moves and nothing on the bus can work.
+  gpio_ops_disable_filter();
+  this->jtag_filter_off_ = true;
+#endif
   this->sda_->setup();
   this->scl_->setup();
   // Idle state: both lines released, so the bus is high as soon as we are up.
