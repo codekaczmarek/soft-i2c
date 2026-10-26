@@ -243,7 +243,10 @@ daljej) dziala bez zmian, bo dostaje `I2CBus&`.
 | `components/cht83xx/sensor.py` | schemat YAML platformy `sensor: cht83xx` |
 | `components/cht83xx/cht83xx.h` | deklatacja `CHT83XXComponent` |
 | `components/cht83xx/cht83xx.cpp` | odczyt rejestrow, wykrywanie wariantu, konwersje |
-| `example.yaml` | pelny projekt na CBU + SHT3xD |
+| `example.yaml` | pelny projekt na CBU + CHT83xx (fabryczna płytka Tuya T&H) |
+| `VERSION` | zrodlo prawdy dla numeru releases (patrz sekcja Wersjonowanie) |
+| `scripts/check_version.sh` | bramka CI: VERSION == makra == nazwa tagu |
+| `scripts/check_workflow.py` | bramka CI: oczekiwane joby, rozwiazywalne `needs`, niepuste kroki |
 
 Zgloszenia i pytania: przez Issues. Chetnie poprawie pod inne uklady BK7231, jezeli
 ktos podesle logi.
@@ -289,13 +292,16 @@ Repo ma pipeline w `.github/workflows/ci.yml` (dziala bez zadnych sekretow):
 
 | Job | Co robi |
 |---|---|
+| `version-consistency` | `scripts/check_version.sh`: `VERSION` == `SOFT_I2C_VERSION` == `CHT83XX_VERSION` == nazwa tagu |
 | `secret-scan` | gitleaks: drzewo + cala historia, plus kontrola negatywna i skan uzupelniajacy |
-| `workflow-audit` | `actionlint` (skladnia) + `zizmor` (bezpieczenstwo workflow) |
+| `workflow-audit` | `actionlint` (skladnia) + `zizmor` (bezpieczenstwo workflow) + `scripts/check_workflow.py` (oczekiwane joby, `needs`, kroki) |
 | `validate` | `esphome config` na `example.yaml` i `test/ci-config.yaml` (macierz: 2026.9.1 i `latest`) |
 | `compile` | pelna kompilacja CBU/BK7231N, artefakty `.bin` i `.ota.rbl` na kazdym PR |
-| `release` | tylko na tagu `v*`: tworzy Release z binariami |
+| `release` | tylko na tagu `v*`: tworzy Release z binariami; wymaga zielonego `version-consistency` |
 
-Wydanie: `git tag v1.0.1 && git push origin v1.0.1`.
+Wydanie (w tej kolejnosci): podnies `VERSION` i oba makra w jednym commicie, otaguj **ten** commit
+(`git tag v1.3.4 && git push origin v1.3.4`). Tag z innym numerem niz `VERSION` dostaje czerwony
+`version-consistency` i nie publikuje Release.
 
 Akcje sa przypiete do pelnych commitow (nie tagow `@v3`), a gitleaks jest pobierany
 z weryfikacja `sha256sum`. Swiadomie nie ma `actions/cache`: cache zapisywany przy
