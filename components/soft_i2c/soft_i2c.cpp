@@ -88,6 +88,18 @@ void SoftI2CBus::dump_config() {
                 (unsigned) this->probe_cfg_sda_drv_, (unsigned) this->probe_cfg_scl_drv_, (int) this->scan_ran_,
                 this->scan_found_, (unsigned) this->scan_first_, (unsigned) this->error_count_,
                 this->last_err_, (unsigned) this->last_err_addr_, (int) this->jtag_filter_off_);
+#if defined(USE_BK72XX)
+  // Odczyt rejestru konfiguracyjnego padu (GPIO_BASE_ADDR + n*4) + kontrole przyrzadu.
+  // pins=-1 oznacza, ze numer nie zostal odczytany i wowczas cfgdrv jest zerem z definicji.
+  // ctl(uart2)=0 uniewaznia caly odczyt: nawet pad skonfigurowany przez logger wyszedl zerem.
+  ESP_LOGCONFIG(TAG,
+                "soft_i2c pads | pins=%d/%d cfgidle=0x%04X/0x%04X cfgdrv=0x%04X/0x%04X ctl(uart2)=0x%04X "
+                "ref(free)=0x%04X",
+                this->probe_pin_sda_, this->probe_pin_scl_, (unsigned) this->probe_cfg_sda_idle_,
+                (unsigned) this->probe_cfg_scl_idle_, (unsigned) this->probe_cfg_sda_drv_,
+                (unsigned) this->probe_cfg_scl_drv_, (unsigned) this->probe_cfg_ctl_,
+                (unsigned) this->probe_cfg_ref_);
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -372,10 +384,27 @@ void SoftI2CBus::setup() {
   // owned by another function), not a missing sensor.
   const bool sda_idle = this->read_sda_();
   const bool scl_idle = this->read_scl_();
+#if defined(USE_BK72XX)
+  // Numery GPIO trafiaja do diagnostyki: cfg jako zero moze pochodzic z padu ALBO z tego, ze
+  // parsowanie dump_summary() nie zwrucilo numeru. Bez tej pary liczb nie da sie tego roznielic.
+  const uint32_t sda_num = bk_pin_number_(this->sda_);
+  const uint32_t scl_num = bk_pin_number_(this->scl_);
+  this->probe_pin_sda_ = sda_num == BK_PIN_UNKNOWN ? -1 : (int32_t) sda_num;
+  this->probe_pin_scl_ = scl_num == BK_PIN_UNKNOWN ? -1 : (int32_t) scl_num;
+  // Stan idle: pad jako wejscie z pullupem. Non-zero = gpio_config() tu dotarl.
+  if (sda_num != BK_PIN_UNKNOWN)
+    this->probe_cfg_sda_idle_ = bk_pin_cfg_(sda_num);
+  if (scl_num != BK_PIN_UNKNOWN)
+    this->probe_cfg_scl_idle_ = bk_pin_cfg_(scl_num);
+  // Kalibracja przyrzadu, dwie kontrole o znanych z gory wartosciach:
+  //  GPIO0 = UART2_TX, konfiguruje go logger -> MUSI byc niezerowe, inaczej odczyt jest wadliwy;
+  //  GPIO6 = nieuzywany na tej płytce -> powinien byc zerem (baseline).
+  this->probe_cfg_ctl_ = bk_pin_cfg_(0u);
+  this->probe_cfg_ref_ = bk_pin_cfg_(6u);
+#endif
   this->drive_scl_low_();
   this->delay_();
 #if defined(USE_BK72XX)
-  const uint32_t scl_num = bk_pin_number_(this->scl_);
   this->probe_cfg_scl_drv_ = scl_num != BK_PIN_UNKNOWN ? bk_pin_cfg_(scl_num) : 0u;
 #endif
   const bool scl_driven_low = !this->read_scl_();
@@ -383,7 +412,6 @@ void SoftI2CBus::setup() {
   this->drive_sda_low_();
   this->delay_();
 #if defined(USE_BK72XX)
-  const uint32_t sda_num = bk_pin_number_(this->sda_);
   this->probe_cfg_sda_drv_ = sda_num != BK_PIN_UNKNOWN ? bk_pin_cfg_(sda_num) : 0u;
 #endif
   const bool sda_driven_low = !this->read_sda_();

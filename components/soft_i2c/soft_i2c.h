@@ -8,7 +8,7 @@
 // Wersja releases = plik VERSION w glownym katalogu (jedno zrodlo prawdy). CI job
 // "Spojnosc wersji" wywala sie, jesli ktokolwiek z nich sie rozjedzie - albo jesli tag
 // v* nie rowna sie VERSION. Nie podnos tej liczby w samotnosci.
-#define SOFT_I2C_VERSION "1.3.4"
+#define SOFT_I2C_VERSION "1.3.5"
 
 
 #include "esphome/components/i2c/i2c_bus.h"
@@ -122,6 +122,19 @@ class SoftI2CBus final : public i2c::I2CBus, public Component {
   /// dotarl w ogole.
   uint32_t probe_cfg_sda_drv_{0};
   uint32_t probe_cfg_scl_drv_{0};
+  /// Ten sam odczyt w stanie idle (obie linie jako wejscie z pullupem). Rozroznia "pad nigdy nie
+  /// skonfigurowany" (oba zera) od "zapis wychodzacy jest blokowany" (idle niezerowe, drv zero).
+  uint32_t probe_cfg_sda_idle_{0};
+  uint32_t probe_cfg_scl_idle_{0};
+  /// KONTROLA PRZYRZADU. cfg[GPIO0] = pad UART2_TX, ktory konfigurujesam logger, wiec MUSI byc
+  /// niezerowy, jesli odczyt dziala. cfg[GPIO6] = pad nieuzywany, powinien byc zerem. Zero na
+  /// GPIO0 oznacza, ze sam odczyt rejestru jest wadliwy i wowczas cfgdrv nie znaczy nic.
+  uint32_t probe_cfg_ctl_{0};
+  uint32_t probe_cfg_ref_{0};
+  /// Numer GPIO realnie uzyty do odczytu rejestru (-1 = parsowanie dump_summary() nie dalowalo
+  /// numeru; wtedy cfgdrv jest zerem z definicji i nie wolno z niego nic wnioskowac).
+  int32_t probe_pin_sda_{-1};
+  int32_t probe_pin_scl_{-1};
   std::vector<uint8_t> scan_results_;
 };
 

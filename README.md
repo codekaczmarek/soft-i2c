@@ -270,6 +270,23 @@ haslo OTA, klucz API) trafiaja do `secrets.yaml` w katalogu dodatka, nie do YAML
 urzdzenia. Binariow z Release zwykle nie uzywasz - Device Builder buduje firmware z
 Twojej konfiguracji, z Twoim kluczem API.
 
+### Diagnostyka padow (`soft_i2c pads`)
+
+Druga linia logu `soft_i2c` pokazuje zawartosc rejestru konfiguracyjnego padu (`GPIO_BASE_ADDR + n*4`)
+i dwie kontrole przyrzadu, zeby zer nie bylo interpretowane na oko:
+
+| Pole | Znaczenie |
+|------|-----------|
+| `pins=22/20` | numery GPIO realnie uzyte do odczytu. `-1` = numer nie zostal odczytany, wowczas **caly cfgdrv jest zerem z definicji i nic nie znaczy** |
+| `cfgidle=x/y` | rejestr w stanie idle (wejscie z pullupem). Non-zero = `gpio_config()` tu dotarl |
+| `cfgdrv=x/y` | rejestr w momencie sterowania w dol. Brak bitow OUTPUT/OUTPUT_ENABLE przy sprawnym `pins` = zapis nie dociera do padu |
+| `ctl(uart2)=x` | pad GPIO0, ktorego nie konfiguruje soft_i2c, tylko build. **Zero tutaj uniewaznia caly odczyt** — znaczy, ze przyrzad mierzy zle, nie ze pad jest zepsuty |
+| `ref(free)=x` | pad nieuzywany, baseline |
+
+Wnioskowanie po tej linii, w tej kolejnosci: najpierw `pins` (czy w ogole mierzymy wlasciwy pad),
+potem `ctl` (czy przyrzad dziala), dopiero potem `cfgidle`/`cfgdrv`. Odwrotna kolejnosc prowadzi do
+fałszywych wnioskow — zero z parsowania i zero z padu wygladaja identycznie.
+
 ## Wersjonowanie
 
 Numer releases bierze sie z pliku `VERSION` w glownym katalogu. Ten sam numer musza miec makra
