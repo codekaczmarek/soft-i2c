@@ -32,7 +32,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/codekaczmarek/soft-i2c.git
-      ref: v1.3.4
+      ref: v1.4.0
 ```
 
 Lokalnie (katalog `esphome-components/` obok pliku YAML, a w nim `soft_i2c/`):
@@ -108,7 +108,7 @@ zewneczne 4.7k-10k do VCC.
 `dump_config()` nadaje **jedną linię** (na BK72xx logi z `setup()` potrafią zaginąć, dlatego wszystko siedzi w `dump_config` - tam dociera zawsze):
 
 ```
-[C][soft_i2c:047]: soft_i2c v1.3.4 | bus SDA=22 SCL=20 100000Hz internal-pullup timeout=10000us | setup=1 | probe idle=1/1 driven=1/1 | loop=1/1 | cfgdrv=0x000A/0x000A | scan=1 found=1 first=0x40 | errors=0 last_err=0@0x00 jtagfilter=1
+[C][soft_i2c:047]: soft_i2c v1.4.0 | bus SDA=22 SCL=20 100000Hz internal-pullup timeout=10000us | setup=1 | probe idle=1/1 driven=1/1 | loop=1/1 | cfgdrv=0x000A/0x000A | scan=1 found=1 first=0x40 | errors=0 last_err=0@0x00 jtagfilter=1
 ```
 
 | Pole | Co znaczy |
@@ -148,6 +148,20 @@ ustawienie pinu jako `INPUT` z wlaczonym pull-upem (`gpio_dma_pe(0)`) powoduje d
 stanu wejscia i gubione zbocza. Sciezka domyslna (`PULLUP`) jest poprawna sprzetowo,
 ale na tej platformie zawodna - stad w przykladach ANALOG plus rezystory 4.7 kOhm do VCC.
 
+### Tryby diagnostyczne (wlaczane opcjonalnie)
+
+| Opcja | Domysl | Co robi i kiedy jej uzyc |
+|---|---|---|
+| `stretch_timeout` | `120ms` | Cierpliwosc na rozciagany SCL. Nie mylic z `timeout` (ten jest na takt bitu i ACK). Zwieksza sie ja dla czujnikow z dlugimi konwersjami, zmniejsza zeby skrocic boot przy martwej magistrali |
+| `pad_census` | `[]` (wyl.) | Konfiguruje kazdy pad z listy jako wejscie z pull-upem, potem z pull-downem, i raportuje odczyt. Pad czytany 0 **w obu** konfiguracjach = trwale przywiazyany do masy, czyli przycisk. **Diody LED nie znajdzie**: prog ~1.8 V znaczy brak pradu przy pull-downie rzadu dziesiatek kOhm, wiec pad z dioda wyglada jak wiszacy. Po probie kazdy pad wraca do wejscia bez rezystorow |
+| `protocol_probe` | `false` | Wysyla surowe sekwencje protokolu (SHT3x repeated-start i stop-start, SHT4x, CHT8305-style na rejestrach), loguje surowe bajty i werdykt CRC8 (Sensirion poly 0x31). Sluzy do rozstrzygniecia "skan ACK-uje, a sterownik nie chce czytac" |
+| `protocol_probe_addresses` | `[0x44]` | Adresy do sondy |
+
+> **Sonde odpala sie PO skanie, nie przed nia.** `protocol_probe` wysyla realna komende pomiaru,
+> a ona rozciaga SCL. Odpalona przed skaniem zatrzaskuje magistrale i skan zglosi `found=0` na
+> sprawnym ukladzie. Ten scenariusz kosztowal pol dnia blednego wniosku "czujnik nie zyje", bo
+> `errors=12 last_err=3@0x44` wyglada dokladnie jak uklad martwy.
+
 ## Sterownik CHT83xx (CHT8305 / CHT8310)
 
 Moduly T&H na CBU (Tuya, niebieska PCB) maja na pokladzie **Sensylink CHT8305**, nie SHT3xD.
@@ -164,7 +178,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/codekaczmarek/soft-i2c.git
-      ref: v1.3.4
+      ref: v1.4.0
 
 i2c: []
 
@@ -210,9 +224,22 @@ daljej) dziala bez zmian, bo dostaje `I2CBus&`.
 
 - Start, stop, restart: klasyczne sekwencje na linii pojedynczej.
 - Odczekanie ACK: SDA puszczona na dziewiatym takcie, potem puszczajace SCL (timeout SMBus).
-- Wykrycie zakleszczenia: SDA niski przed START - rusza standardowa procedura odzysku
-  z ESPHome (dziewiec taktow plus STOP).
-- Timeout na czekaniu na zwolnienie SDA (okolo 10 ms) - brak ACK nie zapetla petli.
+- **Czysty odczyt nie moze wyslac slowa adresu jako WRITE.** ESPHome deleguje
+  `I2CBus::read()` do `write_readv(address, nullptr, 0, buffer, len)`, wiec sterownik musi
+  rozpoznac `write_count == 0` i wyslac adres z bitem READ. Bez tego transakcja konczy sie
+  `ERROR_OK`, zero NACK-ow, zero timeoutow, a dane sa smieciowe. Dlatego objaw "skan widzi
+  urzadzenie, a sterownik pisze *Retrying to reconnect the sensor*" **nie** dowodzi uszkodzenia
+  sprzetu. Test rozstrzygajacy: odczyt numeru seryjnego (`Serial Number:` niezerowe).
+- **Rozciaganie zegara (clock stretching).** Kazde czekanie na SCL dostaje limit jako parametr
+  wywolania, nie wspolne pole: takt bitu potrzebuje ~10 ms, a oczekiwanie az slave skonczy
+  konwersje (SHT3x ~8.5 ms) potrzebuje ~120 ms. Jeden wspolny limit daje albo zatrzask
+  (przerwanie w srodku konwersji, a STOP nie wychodzi, bo STOP wymaga SCL w gorze), albo boot
+  trwajacy pol minuty przy kazdym bledzie.
+- **Odzysk po zakleszczeniu: dziewiec taktow SCL bezwarunkowo**, potem STOP, a bilans
+  (`read_sda_` i `read_scl_`) mowi, co wisialo. Wersja `if (SDA wysoka) return OK;` lecyla tylko
+  magistrale zdrowa - przy zatrzasku SDA jest wlasnie wysoka. Wersja `czekaj na SCL, potem taktuj`
+  czekala do konca limitu i nigdy nie taktowala, a slave czekajacy na krawedz zegara nie dostaje
+  jej od czekania.
 - Czas: 100 kHz wyliczane z `micros()`; realnie wychodzi okolo 40 kHz przez narzut
   wolania GPIO. Za malo na SMBus, za malo na probe 400 kHz.
 
@@ -227,10 +254,16 @@ daljej) dziala bez zmian, bo dostaje `I2CBus&`.
 - **Zapis do flasha wylacza przerwania.** `save_state` (preferencja
   `flash_write_interval`) blokuje przerwania na okolo 20 ms - w tym oknie bit-bang moze
   pogubic bity. Przy `update_interval: 15s` to jeden zly odczyt na setki; przy 1 s czesciej.
-- **Wyacznie jeden master** na magistrali. Brak CLK stretching, brak multiplekserow
+- **Wyacznie jeden master** na magistrali. Brak multiplekserow
   (`tca9548`), brak `i2c_scan` i `i2c_restart_dump` (dzialaja tylko z natywnym `i2c`).
 - Magistrala bez rezystorow (wejsciowy stan dryfujacy) da `recovery failed` w logu i
   czujnik bedzie niewidoczny - to bledna konfiguracja, nie usterka komponentu.
+- **Zatrzasniety slave trzyma SCL w zerze, a reboot procesora tego nie leczy.** Rozpoznaje sie po
+  `probe idle=x/0` (SCL w dole przy puszczonej linii) oraz po `scl_stuck` rosnacym w
+  nieskonczonosc, podczas gdy rejestr pada SCL to `0x3C`, czyli wejscie z pull-upem - linii nie
+  trzymamy my. Bezwarunkowe taktowanie uwalnia slave'a w wiekszosci przypadkow (tak bylo na
+  SHT30/CBU: `scl_stuck` ze 131 do 1 i `found=1 first=0x44` w nastepnym boocie). Jesli nie uwolni,
+  trzeba mu **odlaczyc zasilanie** - reset MCU resetuje tylko mastera.
 
 ## Pliki
 
@@ -262,7 +295,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/codekaczmarek/soft-i2c.git
-      ref: v1.3.4
+      ref: v1.4.0
 ```
 
 Repo jest publiczne, wiec nie potrzeba zadnych token6w. Sekrety (SSID, haslo WiFi,
@@ -295,8 +328,8 @@ Numer releases bierze sie z pliku `VERSION` w glownym katalogu. Ten sam numer mu
 `soft_i2c v...` z konkretnym Release i konkretnym commitem.
 
 Podnoszac wersje zmien w jednym commicie trzy rzeczy: `VERSION`, oba makra i przyklady `ref:`
-w tym README. Nazwe tagu pilnuje CI (`scripts/check_version.sh`, job "Spojnosc wersji"): `v1.3.4`
-przechodzi tylko z `VERSION` = `1.3.4`, wiec otagowanie commita z innym numerem daje czerwony job
+w tym README. Nazwe tagu pilnuje CI (`scripts/check_version.sh`, job "Spojnosc wersji"): `v1.4.0`
+przechodzi tylko z `VERSION` = `1.4.0`, wiec otagowanie commita z innym numerem daje czerwony job
 i blokuje Release.
 
 Historia: przez kilka wydania tag (`v1.3.x`) i `SOFT_I2C_VERSION` (`1.2.x`) rozjezdzaly sie ze
@@ -318,7 +351,7 @@ Repo ma pipeline w `.github/workflows/ci.yml` (dziala bez zadnych sekretow):
 | `release` | tylko na tagu `v*`: tworzy Release z binariami; wymaga zielonego `version-consistency` |
 
 Wydanie (w tej kolejnosci): podnies `VERSION` i oba makra w jednym commicie, otaguj **ten** commit
-(`git tag v1.3.4 && git push origin v1.3.4`). Tag z innym numerem niz `VERSION` dostaje czerwony
+(`git tag v1.4.0 && git push origin v1.4.0`). Tag z innym numerem niz `VERSION` dostaje czerwony
 `version-consistency` i nie publikuje Release.
 
 Akcje sa przypiete do pelnych commitow (nie tagow `@v3`), a gitleaks jest pobierany

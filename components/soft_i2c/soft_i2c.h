@@ -8,7 +8,7 @@
 // The release version = the VERSION file in the main directory (single source of truth). The CI job
 // "Version consistency" fails if any of them drift apart - or if the v* tag does not equal
 // VERSION. Do not bump this number in isolation.
-#define SOFT_I2C_VERSION "1.3.5"
+#define SOFT_I2C_VERSION "1.4.0"
 
 
 #include "esphome/components/i2c/i2c_bus.h"

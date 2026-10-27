@@ -59,6 +59,9 @@ soft_i2c:
     frequency: 100kHz
     scan: true
     internal_pullup: true
+    # Rozciagany zegar: SHT3x trzyma SCL przez cala konwersje (~8.5 ms). Daj wiecej niz `timeout`,
+    # ktory jest tylko na takt bitu i ACK. Patrz README, sekcja "Tryby diagnostyczne".
+    stretch_timeout: 120ms
 
 sensor:
   # Sensylink CHT8305/CHT8310. NOT sht3xd: that driver speaks Sensirion (command words with

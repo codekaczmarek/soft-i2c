@@ -37,6 +37,13 @@ soft_i2c:
     scan: true
     timeout: 10ms
     bus_recovery: false
+    # Ponižsze trzy opcje tu sa, zeby job `validate` pilnowal ich schematu - to konfiguracja
+    # testowa (`esphome config`), wiec sondy ani census nie wykonaja sie na sprzecie, ale blad
+    # w walidatorze lub zmiana nazwy klucza wywali CI zamiast wyjść dopiero na urzadzeniu.
+    stretch_timeout: 150ms
+    protocol_probe: true
+    protocol_probe_addresses: [0x44, 0x40]
+    pad_census: [24, 26, 28]
 
 # CHT83xx (Sensylink CHT8305/CHT8310), nie sht3xd: ten ostatni wysyla komendy Sensirion z CRC-8
 # i probuje wylaczyc grzejke (0x3066), ktorej CHT8305 nie ma - mark_failed("Failed to set heater
